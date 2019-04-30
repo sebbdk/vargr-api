@@ -1,11 +1,11 @@
 const koa = require('koa');
 const Router = require('koa-router');
 const compress = require('koa-compress');
-const MongoMiddlware = require('koa-mongo');
 const bodyParser = require('koa-bodyparser');
 const cors = require('koa2-cors');
 
-const actions = require('./actions');
+
+const { indexAction, viewAction, addAction, updateAction, deleteAction} = require('./actions.js')
 
 /**
  * Convenience method to configure the Koa instance
@@ -13,17 +13,20 @@ const actions = require('./actions');
  *
  * @param Object config
  */
-module.exports = function init(config) {
+function Dbapi(dbi, config = {}) {
     if (!config.server) config.server = new koa();
     if (!config.router) config.router = new Router();
 
-    // Add request handlers
-    config.collections && config.collections.forEach((item) => {
-        actions.all(config.router, item);
-    });
+    const collections = [];
+    const collectionConfigs = {};
+
+    config.router.get(`/:collectionName`, ctx => indexAction(ctx, dbi, collections, collectionConfigs));
+    config.router.post(`/:collectionName`, ctx => addAction(ctx, dbi, collections, collectionConfigs));
+    config.router.get(`/:collectionName/:id`, ctx => viewAction(ctx, dbi, collections, collectionConfigs));
+    config.router.delete(`/:collectionName/:id`, ctx => deleteAction(ctx, dbi, collections, collectionConfigs));
+    config.router.put(`/:collectionName/:id`, ctx => updateAction(ctx, dbi, collections, collectionConfigs));
 
     config.server
-        .use(MongoMiddlware(config.dbConfig))
         .use(cors(config.cors))
         .use(compress({
             filter: function (content_type) {
@@ -36,5 +39,13 @@ module.exports = function init(config) {
         .use(config.router.routes())
         .use(config.router.allowedMethods());
 
-    return config.server;
+    return {
+        server: config.server,
+        serveCollection: (collectionName, config = {}) => {
+            collections.push(collectionName);
+            collectionConfigs[collectionName] = config;
+        }
+    };
 }
+
+module.exports = { Dbapi }
